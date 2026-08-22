@@ -1,0 +1,8 @@
+build/
+cmake-build-*/
+
+.idea/
+.vscode/
+
+mydbg
+hello
