@@ -28,3 +28,11 @@ add_library(linenoise STATIC ext/linenoise/linenoise.c)
 target_include_directories(linenoise PUBLIC ext/linenoise)
 target_compile_options(linenoise PRIVATE -w)
 target_link_libraries(mydbg PRIVATE linenoise)
+
+
+add_custom_target(libelfin COMMAND make WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ext/libelfin)
+target_include_directories(mydbg PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ext/libelfin)
+target_link_libraries(mydbg PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/ext/libelfin/elf/libelf++.so
+    ${CMAKE_CURRENT_SOURCE_DIR}/ext/libelfin/dwarf/libdwarf++.so)
+add_dependencies(mydbg libelfin)
