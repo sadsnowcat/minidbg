@@ -72,7 +72,6 @@ minidbg>
 | `register write <reg> <val>` | 修改指定寄存器                           | `register write rip 0x401136`  |
 | `memory read <addr>`         | 读取指定地址处的 8 字节内存              | `memory read 0x400000`         |
 | `memory write <addr> <val>`  | 向指定地址写入 8 字节数据                | `memory write 0x400000 0x1234` |
-| `quit`                       | 退出调试器                               | `quit`                         |
 
 ### 命令缩写
 
