@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <unordered_map>
 #include <utility>
+#include <iomanip>
 
 #include "breakpoint.hpp"
 #include "dwarf/dwarf++.hh"
@@ -52,17 +53,16 @@ namespace minidbg {
 
         // Registers access
         void dump_registers();
-        
+
         // Memory access
         uint64_t read_memory(uint64_t address);
-        void write_memory(uint64_t address,uint64_t value);
+        void write_memory(uint64_t address, uint64_t value);
 
-        // PC 
+        // PC
         uint64_t get_pc();
         void set_pc(uint64_t pc);
 
         void wait_for_signal();
-
 
     private:
         std::string m_prog_name;
@@ -91,37 +91,56 @@ namespace minidbg {
         if (is_prefix(command, "continue")) {
             continue_execution();
         } else if (is_prefix(command, "break")) {
-            std::string addr{args[1], 2};
-            set_breakpoint_at_address(std::stol(addr, 0, 16));
+            if (args.size() > 1) {
+                set_breakpoint_at_address(std::stol(args[1], nullptr, 0));
+            } else {
+                std::cerr << "usage: break <address>\n";
+            }
         } else if (is_prefix(command, "register")) {
-            if (is_prefix(args[1], "dump")) {
+            if (args.size() < 2) {
+                std::cerr << "usage: register dump | read <name> | write <name> <value>\n";
+            } else if (is_prefix(args[1], "dump")) {
                 dump_registers();
             } else if (is_prefix(args[1], "read")) {
-                std::cout << get_register_value(m_pid, get_register_from_name(args[2]))
-                          << std::endl;
+                if (args.size() < 3) {
+                    std::cerr << "usage: register read <name>\n";
+                } else {
+                    std::cout << std::hex
+                              << get_register_value(m_pid, get_register_from_name(args[2]))
+                              << std::endl;
+                }
             } else if (is_prefix(args[1], "write")) {
-                std::string val{args[3], 2};
-                set_register_value(m_pid, get_register_from_name(args[2]), std::stol(val, 0, 16));
+                if (args.size() < 4) {
+                    std::cerr << "usage: register write <name> <value>\n";
+                } else {
+                    set_register_value(m_pid, get_register_from_name(args[2]),
+                                       std::stol(args[3], nullptr, 0));
+                }
+            } else {
+                std::cerr << "Unknown register subcommand: " << args[1] << "\n";
             }
-        } else if (is_prefix(command,"memory")){
-            std::string addr {args[2],2};
-
-            if(is_prefix(args[1],"read")){
-                std::cout<<std::hex<<read_memory(std::stol(addr,0,16))<<std::endl;
+        } else if (is_prefix(command, "memory")) {
+            if (args.size() < 3) {
+                std::cerr << "usage: memory read <address> | memory write <address> <value>\n";
+            } else if (is_prefix(args[1], "read")) {
+                std::cout << std::hex << read_memory(std::stol(args[2], nullptr, 0)) << std::endl;
+            } else if (is_prefix(args[1], "write")) {
+                if (args.size() < 4) {
+                    std::cerr << "usage: memory write <address> <value>\n";
+                } else {
+                    write_memory(std::stol(args[2], nullptr, 0), std::stol(args[3], nullptr, 0));
+                }
+            } else {
+                std::cerr << "Unknown memory subcommand: " << args[1] << "\n";
             }
-            if(is_prefix(args[1],"write")){
-                std::string val {args[3],2};
-                write_memory(std::stol(addr,0,16),std::stol(val,0,16));
-            }
-        } 
-        else {
+        } else {
             std::cerr << "Unknown command\n";
         }
     }
 
     void debugger::continue_execution() {
         step_over_breakpoint();
-        ptrace(PTRACE_CONT,m_pid,nullptr,nullptr);
+        ptrace(PTRACE_CONT, m_pid, nullptr, nullptr);
         wait_for_signal();
     }
 
@@ -139,45 +158,44 @@ namespace minidbg {
         }
     }
 
-    uint64_t debugger::read_memory(uint64_t address){
-        return ptrace(PTRACE_PEEKDATA,m_pid,address,nullptr);
+    uint64_t debugger::read_memory(uint64_t address) {
+        return ptrace(PTRACE_PEEKDATA, m_pid, address, nullptr);
     }
 
-    void debugger::write_memory(uint64_t address,uint64_t value){
-        ptrace(PTRACE_POKEDATA,m_pid,address,value);
+    void debugger::write_memory(uint64_t address, uint64_t value) {
+        ptrace(PTRACE_POKEDATA, m_pid, address, value);
     }
 
-    uint64_t debugger::get_pc(){
-        return get_register_value(m_pid,reg::rip);
+    uint64_t debugger::get_pc() {
+        return get_register_value(m_pid, reg::rip);
     }
 
-    void debugger::set_pc(uint64_t pc){
-        set_register_value(m_pid,reg::rip,pc);
+    void debugger::set_pc(uint64_t pc) {
+        set_register_value(m_pid, reg::rip, pc);
     }
 
-    void debugger::step_over_breakpoint(){
-        auto possible_breakpoint_location = get_pc() -1;
+    void debugger::step_over_breakpoint() {
+        auto possible_breakpoint_location = get_pc() - 1;
 
-        if(m_breakpoints.count(possible_breakpoint_location)){
-            auto& bp = m_breakpoints[possible_breakpoint_location];
+        if (m_breakpoints.count(possible_breakpoint_location)) {
+            auto &bp = m_breakpoints[possible_breakpoint_location];
 
-            if(bp.is_enabled()){
+            if (bp.is_enabled()) {
                 auto previous_instruction_address = possible_breakpoint_location;
                 set_pc(previous_instruction_address);
                 bp.disable();
-                ptrace(PTRACE_SINGLESTEP,m_pid,nullptr,nullptr);
+                ptrace(PTRACE_SINGLESTEP, m_pid, nullptr, nullptr);
                 wait_for_signal();
                 bp.enable();
             }
         }
     }
 
-    void debugger::wait_for_signal(){
+    void debugger::wait_for_signal() {
         int wait_status;
-        auto options =0;
-        waitpid(m_pid,&wait_status,options);
+        auto options = 0;
+        waitpid(m_pid, &wait_status, options);
     }
-
 
 } // namespace minidbg
 
