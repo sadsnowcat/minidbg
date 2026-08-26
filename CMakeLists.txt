@@ -16,6 +16,7 @@ endif()
        src/debugger.cpp
        src/registers.cpp
        src/utils.cpp
+       src/vmmap.cpp
    )
 
 target_include_directories(mydbg PRIVATE
