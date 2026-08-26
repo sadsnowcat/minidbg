@@ -9,6 +9,7 @@
 
 #include "registers.hpp"
 #include "utils.hpp"
+#include "vmmap.hpp"
 
 namespace minidbg {
     void debugger::run() {
@@ -73,7 +74,10 @@ namespace minidbg {
             } else {
                 std::cerr << "Unknown memory subcommand: " << args[1] << "\n";
             }
-        } else {
+        }else if(is_prefix(command, "vmmap")) {
+            print_vmmap(m_pid);
+        } 
+        else {
             std::cerr << "Unknown command\n";
         }
     }
@@ -84,7 +88,7 @@ namespace minidbg {
         wait_for_signal();
     }
 
-    void debugger::set_breakpoint_at_address(std::intptr_t addr) {
+    void debugger::set_breakpoint_at_address(std::uintptr_t addr) {
         std::cout << "Set breakpoint at address 0x" << std::hex << addr << std::endl;
         breakpoint bp{m_pid, addr};
         bp.enable();
