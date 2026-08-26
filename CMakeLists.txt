@@ -26,7 +26,7 @@ target_include_directories(mydbg PRIVATE
 add_executable(hello
     examples/hello.c
 )
-target_compile_options(hello PRIVATE -g -O0)
+target_compile_options(hello PRIVATE -g -O0 -gdwarf-4)
 
 
 add_library(linenoise STATIC ext/linenoise/linenoise.c)
@@ -36,7 +36,11 @@ target_link_libraries(mydbg PRIVATE linenoise)
 
 
 add_custom_target(libelfin COMMAND make WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ext/libelfin)
-target_include_directories(mydbg PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ext/libelfin)
+target_include_directories(mydbg PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/ext/libelfin
+    ${CMAKE_CURRENT_SOURCE_DIR}/ext/libelfin/elf
+    ${CMAKE_CURRENT_SOURCE_DIR}/ext/libelfin/dwarf
+)
 target_link_libraries(mydbg PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ext/libelfin/elf/libelf++.so
     ${CMAKE_CURRENT_SOURCE_DIR}/ext/libelfin/dwarf/libdwarf++.so)
