@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.2)
+cmake_minimum_required(VERSION 3.16)
 
 project (MiniDbg)
 
@@ -10,9 +10,13 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 
-add_executable(mydbg
-    src/main.cpp
-)
+  add_executable(mydbg
+       src/main.cpp
+       src/breakpoint.cpp
+       src/debugger.cpp
+       src/registers.cpp
+       src/utils.cpp
+   )
 
 target_include_directories(mydbg PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include

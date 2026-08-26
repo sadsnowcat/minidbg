@@ -3,6 +3,9 @@ cmake-build-*/
 
 .idea/
 .vscode/
+.cache
+
+compile_commands.json
 
 mydbg
 hello

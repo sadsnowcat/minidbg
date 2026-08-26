@@ -1,12 +1,8 @@
-#include <fstream>
-#include <iomanip>
 #include <iostream>
-#include <sstream>
 #include <sys/personality.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <vector>
 
 #include <fcntl.h>
 #include <sys/stat.h>
