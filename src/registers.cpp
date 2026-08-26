@@ -60,9 +60,9 @@ namespace minidbg {
 
     uint64_t get_register_value_from_dwarf_register(pid_t pid, unsigned regnum) {
         auto it = std::find_if(begin(g_register_descriptors), end(g_register_descriptors),
-                               [regnum](auto &&rd) { return rd.dwarf_r == regnum; });
+                               [regnum](auto &&rd) { return rd.dwarf_r == static_cast<int>(regnum); });
 
-        if (it = end(g_register_descriptors)) {
+        if (it == end(g_register_descriptors)) {
             throw std::out_of_range{"Unknown dwarf register"};
         }
 
