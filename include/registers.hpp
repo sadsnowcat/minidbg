@@ -2,10 +2,10 @@
 #define MINIDBG_REGISTERS_HPP
 
 #include <array>
-#include <sys/types.h>
 #include <cstddef>
-#include <string>
 #include <cstdint>
+#include <string>
+#include <sys/types.h>
 
 namespace minidbg {
     enum class reg {

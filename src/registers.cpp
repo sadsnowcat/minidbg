@@ -1,9 +1,9 @@
 #include "registers.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 #include <sys/ptrace.h>
 #include <sys/user.h>
-#include <stdexcept>
 
 namespace minidbg {
     const std::array<reg_descriptor, n_registers> g_register_descriptors{{
@@ -35,7 +35,7 @@ namespace minidbg {
         {reg::fs, 54, "fs"},
         {reg::gs, 55, "gs"},
     }};
-    
+
     uint64_t get_register_value(pid_t pid, reg r) {
         user_regs_struct regs;
         ptrace(PTRACE_GETREGS, pid, nullptr, &regs);
@@ -59,8 +59,9 @@ namespace minidbg {
     }
 
     uint64_t get_register_value_from_dwarf_register(pid_t pid, unsigned regnum) {
-        auto it = std::find_if(begin(g_register_descriptors), end(g_register_descriptors),
-                               [regnum](auto &&rd) { return rd.dwarf_r == static_cast<int>(regnum); });
+        auto it =
+            std::find_if(begin(g_register_descriptors), end(g_register_descriptors),
+                         [regnum](auto &&rd) { return rd.dwarf_r == static_cast<int>(regnum); });
 
         if (it == end(g_register_descriptors)) {
             throw std::out_of_range{"Unknown dwarf register"};
