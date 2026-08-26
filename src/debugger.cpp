@@ -6,6 +6,9 @@
 #include <sys/wait.h>
 #include <iostream>
 #include <iomanip>
+#include <fstream>
+#include <stdexcept>
+#include <exception>
 
 #include "registers.hpp"
 #include "utils.hpp"
@@ -13,9 +16,8 @@
 
 namespace minidbg {
     void debugger::run() {
-        int wait_status;
-        auto options = 0;
-        waitpid(m_pid, &wait_status, options);
+        wait_for_signal();
+        initialise_load_address();
 
         char *line = nullptr;
         while ((line = linenoise("minidbg> ")) != nullptr) {
@@ -75,7 +77,7 @@ namespace minidbg {
                 std::cerr << "Unknown memory subcommand: " << args[1] << "\n";
             }
         }else if(is_prefix(command, "vmmap")) {
-            print_vmmap(m_pid);
+            print_vmmap(m_pid, get_pc());
         } 
         else {
             std::cerr << "Unknown command\n";
@@ -139,6 +141,135 @@ namespace minidbg {
         int wait_status;
         auto options = 0;
         waitpid(m_pid, &wait_status, options);
+
+        auto siginfo = get_signal_info();
+
+        switch (siginfo.si_signo)
+        {
+        case SIGTRAP:
+            handle_sigtrap(siginfo);
+            break;
+        case SIGSEGV:
+            std::cout<<"Yay, segfault. Reason: "<< siginfo.si_code<<std::endl;
+            break;
+        default:
+            std::cout<<"Got signal "<< strsignal(siginfo.si_signo)<<std::endl;
+            break;
+        }
     }
 
+    dwarf::die debugger::get_function_from_pc(uint64_t pc){
+        for(auto &cu : m_dwarf.compilation_units()){
+            if(die_pc_range(cu.root()).contains(pc)){
+                for (const auto& die : cu.root()) {
+                    if (die.tag == dwarf::DW_TAG::subprogram){
+                        if(die_pc_range(die).contains(pc)){
+                            return die;
+                        }
+                    }
+                }
+            }
+        }
+
+        throw std::out_of_range{"Cannot find function"};
+    }
+
+    dwarf::line_table::iterator debugger::get_line_entry_from_pc(uint64_t pc){
+        if (!m_dwarf_ok) {
+            throw std::runtime_error{"DWARF debug info is unavailable"};
+        }
+        for(auto &cu : m_dwarf.compilation_units()){
+            if (die_pc_range(cu.root()).contains(pc)){
+                auto &lt=cu.get_line_table();
+                auto it= lt.find_address(pc);
+                if (it == lt.end()){
+                    throw std::out_of_range{"Cannot find line entry"};
+                }
+                else{
+                    return it;
+                }
+            }
+        }
+
+        throw std::out_of_range{"Cannot find line entry"};
+    }
+
+    void debugger::initialise_load_address(){
+        if (m_elf.get_hdr().type == elf::et::dyn){
+            std::ifstream map("/proc/" + std::to_string(m_pid) + "/maps");
+
+            std::string addr;
+            std::getline(map,addr, '-');
+            m_load_address = std::stol(addr,0,16);
+        }
+    }
+
+    uint64_t debugger::offset_load_address(uint64_t addr) {
+        return addr - m_load_address;
+    }
+
+    void debugger::print_source(const std::string& file_name,unsigned line,unsigned n_lines_context){
+        std::ifstream file {file_name};
+
+        auto start_line = line <= n_lines_context ?1: line - n_lines_context;
+        auto end_line = line + n_lines_context+ (line < n_lines_context ? n_lines_context - line : 0) + 1;
+
+        char c{};
+        auto current_line = 1u;
+
+        while(current_line != start_line && file.get(c)){
+            if(c=='\n'){
+                ++current_line;
+            }
+        }
+
+        std::cout<<(current_line==line?">":"  ");
+
+        while (current_line<= end_line&&file.get(c)){
+            std::cout<<c;
+            if(c == '\n'){
+                ++current_line;
+                std::cout << (current_line==line ? "> " : "  ");
+            }
+        }
+        std::cout<<std::endl;
+    }
+
+    siginfo_t debugger::get_signal_info(){
+        siginfo_t info;
+        ptrace(PTRACE_GETSIGINFO,m_pid,nullptr,&info);
+        return info;
+    }
+
+    void debugger::handle_sigtrap(siginfo_t info){
+        switch (info.si_code)
+        {
+        case SI_KERNEL:
+        case TRAP_BRKPT:
+        {
+            set_pc(get_pc()-1);
+            std::cout<<"Hit breakpoint at address 0x"<<std::hex<<get_pc()<<std::endl;
+            auto offset_pc = offset_load_address(get_pc());
+
+            // Source view fault tolerance: Neither DWARF parsing failures nor missing source files should cause the debugger to crash entirely.
+            try {
+                auto line_entry = get_line_entry_from_pc(offset_pc);
+                if (line_entry->file) {
+                    print_source(line_entry->file->path, line_entry->line);
+                } else {
+                    std::cout << "  (No source file information found for this address.)\n";
+                }
+            } catch (const std::exception &e) {
+                std::cout << "  (Cannot display source code: " << e.what()
+                          << " - The debug info version may be too high; source view degraded.)\n";
+            }
+            return;
+        }
+        case TRAP_TRACE:
+            return;        
+        default:
+            std::cout << "Unknown SIGTRAP code " << info.si_code << std::endl;
+            return;
+        }
+    }
 } // namespace minidbg
