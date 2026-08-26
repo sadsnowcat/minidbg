@@ -1,14 +1,14 @@
 #include "debugger.hpp"
 
+#include <exception>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
 #include <linenoise.h>
+#include <stdexcept>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <iostream>
-#include <iomanip>
-#include <fstream>
-#include <stdexcept>
-#include <exception>
 
 #include "registers.hpp"
 #include "utils.hpp"
@@ -76,10 +76,19 @@ namespace minidbg {
             } else {
                 std::cerr << "Unknown memory subcommand: " << args[1] << "\n";
             }
-        }else if(is_prefix(command, "vmmap")) {
+        } else if (is_prefix(command, "vmmap")) {
             print_vmmap(m_pid, get_pc());
-        } 
-        else {
+        } else if (is_prefix(command, "step")) {
+            step_in();
+        } else if (is_prefix(command, "stepi")) {
+            single_step_instruction_with_breakpoint_check();
+            auto line_entry = get_line_entry_from_pc(get_offset_pc());
+            // print_source(line_entry->file->path, line_entry->line);
+        } else if (is_prefix(command, "next")) {
+            step_over();
+        } else if (is_prefix(command, "finish")) {
+            step_out();
+        } else {
             std::cerr << "Unknown command\n";
         }
     }
@@ -121,7 +130,9 @@ namespace minidbg {
     }
 
     void debugger::step_over_breakpoint() {
-        auto possible_breakpoint_location = get_pc() - 1;
+        // After a breakpoint hit, handle_sigtrap has already rewound the PC to the
+        // breakpoint address, so look it up directly (no -1 adjustment).
+        auto possible_breakpoint_location = get_pc();
 
         if (m_breakpoints.count(possible_breakpoint_location)) {
             auto &bp = m_breakpoints[possible_breakpoint_location];
@@ -144,26 +155,25 @@ namespace minidbg {
 
         auto siginfo = get_signal_info();
 
-        switch (siginfo.si_signo)
-        {
+        switch (siginfo.si_signo) {
         case SIGTRAP:
             handle_sigtrap(siginfo);
             break;
         case SIGSEGV:
-            std::cout<<"Yay, segfault. Reason: "<< siginfo.si_code<<std::endl;
+            std::cout << "Yay, segfault. Reason: " << siginfo.si_code << std::endl;
             break;
         default:
-            std::cout<<"Got signal "<< strsignal(siginfo.si_signo)<<std::endl;
+            std::cout << "Got signal " << strsignal(siginfo.si_signo) << std::endl;
             break;
         }
     }
 
-    dwarf::die debugger::get_function_from_pc(uint64_t pc){
-        for(auto &cu : m_dwarf.compilation_units()){
-            if(die_pc_range(cu.root()).contains(pc)){
-                for (const auto& die : cu.root()) {
-                    if (die.tag == dwarf::DW_TAG::subprogram){
-                        if(die_pc_range(die).contains(pc)){
+    dwarf::die debugger::get_function_from_pc(uint64_t pc) {
+        for (auto &cu : m_dwarf.compilation_units()) {
+            if (die_pc_range(cu.root()).contains(pc)) {
+                for (const auto &die : cu.root()) {
+                    if (die.tag == dwarf::DW_TAG::subprogram) {
+                        if (die_pc_range(die).contains(pc)) {
                             return die;
                         }
                     }
@@ -174,18 +184,17 @@ namespace minidbg {
         throw std::out_of_range{"Cannot find function"};
     }
 
-    dwarf::line_table::iterator debugger::get_line_entry_from_pc(uint64_t pc){
+    dwarf::line_table::iterator debugger::get_line_entry_from_pc(uint64_t pc) {
         if (!m_dwarf_ok) {
             throw std::runtime_error{"DWARF debug info is unavailable"};
         }
-        for(auto &cu : m_dwarf.compilation_units()){
-            if (die_pc_range(cu.root()).contains(pc)){
-                auto &lt=cu.get_line_table();
-                auto it= lt.find_address(pc);
-                if (it == lt.end()){
+        for (auto &cu : m_dwarf.compilation_units()) {
+            if (die_pc_range(cu.root()).contains(pc)) {
+                auto &lt = cu.get_line_table();
+                auto it = lt.find_address(pc);
+                if (it == lt.end()) {
                     throw std::out_of_range{"Cannot find line entry"};
-                }
-                else{
+                } else {
                     return it;
                 }
             }
@@ -194,13 +203,13 @@ namespace minidbg {
         throw std::out_of_range{"Cannot find line entry"};
     }
 
-    void debugger::initialise_load_address(){
-        if (m_elf.get_hdr().type == elf::et::dyn){
+    void debugger::initialise_load_address() {
+        if (m_elf.get_hdr().type == elf::et::dyn) {
             std::ifstream map("/proc/" + std::to_string(m_pid) + "/maps");
 
             std::string addr;
-            std::getline(map,addr, '-');
-            m_load_address = std::stol(addr,0,16);
+            std::getline(map, addr, '-');
+            m_load_address = std::stol(addr, 0, 16);
         }
     }
 
@@ -208,50 +217,51 @@ namespace minidbg {
         return addr - m_load_address;
     }
 
-    void debugger::print_source(const std::string& file_name,unsigned line,unsigned n_lines_context){
-        std::ifstream file {file_name};
+    void debugger::print_source(const std::string &file_name, unsigned line,
+                                unsigned n_lines_context) {
+        std::ifstream file{file_name};
 
-        auto start_line = line <= n_lines_context ?1: line - n_lines_context;
-        auto end_line = line + n_lines_context+ (line < n_lines_context ? n_lines_context - line : 0) + 1;
+        auto start_line = line <= n_lines_context ? 1 : line - n_lines_context;
+        auto end_line =
+            line + n_lines_context + (line < n_lines_context ? n_lines_context - line : 0) + 1;
 
         char c{};
         auto current_line = 1u;
 
-        while(current_line != start_line && file.get(c)){
-            if(c=='\n'){
+        while (current_line != start_line && file.get(c)) {
+            if (c == '\n') {
                 ++current_line;
             }
         }
 
-        std::cout<<(current_line==line?">":"  ");
+        std::cout << (current_line == line ? ">" : "  ");
 
-        while (current_line<= end_line&&file.get(c)){
-            std::cout<<c;
-            if(c == '\n'){
+        while (current_line <= end_line && file.get(c)) {
+            std::cout << c;
+            if (c == '\n') {
                 ++current_line;
-                std::cout << (current_line==line ? "> " : "  ");
+                std::cout << (current_line == line ? "> " : "  ");
             }
         }
-        std::cout<<std::endl;
+        std::cout << std::endl;
     }
 
-    siginfo_t debugger::get_signal_info(){
+    siginfo_t debugger::get_signal_info() {
         siginfo_t info;
-        ptrace(PTRACE_GETSIGINFO,m_pid,nullptr,&info);
+        ptrace(PTRACE_GETSIGINFO, m_pid, nullptr, &info);
         return info;
     }
 
-    void debugger::handle_sigtrap(siginfo_t info){
-        switch (info.si_code)
-        {
+    void debugger::handle_sigtrap(siginfo_t info) {
+        switch (info.si_code) {
         case SI_KERNEL:
-        case TRAP_BRKPT:
-        {
-            set_pc(get_pc()-1);
-            std::cout<<"Hit breakpoint at address 0x"<<std::hex<<get_pc()<<std::endl;
+        case TRAP_BRKPT: {
+            set_pc(get_pc() - 1);
+            std::cout << "Hit breakpoint at address 0x" << std::hex << get_pc() << std::endl;
             auto offset_pc = offset_load_address(get_pc());
 
-            // Source view fault tolerance: Neither DWARF parsing failures nor missing source files should cause the debugger to crash entirely.
+            // Source view fault tolerance: Neither DWARF parsing failures nor missing source files
+            // should cause the debugger to crash entirely.
             try {
                 auto line_entry = get_line_entry_from_pc(offset_pc);
                 if (line_entry->file) {
@@ -266,10 +276,103 @@ namespace minidbg {
             return;
         }
         case TRAP_TRACE:
-            return;        
+            return;
         default:
             std::cout << "Unknown SIGTRAP code " << info.si_code << std::endl;
             return;
         }
     }
+
+    void debugger::single_step_instruction() {
+        ptrace(PTRACE_SINGLESTEP, m_pid, nullptr, nullptr);
+        wait_for_signal();
+    }
+
+    void debugger::single_step_instruction_with_breakpoint_check() {
+        if (m_breakpoints.count(get_pc())) {
+            step_over_breakpoint();
+        } else {
+            single_step_instruction();
+        }
+    }
+
+    void debugger::step_out() {
+        auto frame_pointer = get_register_value(m_pid, reg::rbp);
+        auto return_address = read_memory(frame_pointer + 8);
+
+        bool should_remove_breakpoint = false;
+        if (!m_breakpoints.count(return_address)) {
+            set_breakpoint_at_address(return_address);
+            should_remove_breakpoint = true;
+        }
+
+        continue_execution();
+
+        if (should_remove_breakpoint) {
+            remove_breakpoint(return_address);
+        }
+    }
+
+    void debugger::step_in() {
+        auto line = get_line_entry_from_pc(get_offset_pc())->line;
+
+        while (get_line_entry_from_pc(get_offset_pc())->line == line) {
+            single_step_instruction_with_breakpoint_check();
+        }
+
+        auto line_entry = get_line_entry_from_pc(get_offset_pc());
+        print_source(line_entry->file->path, line_entry->line);
+    }
+
+    void debugger::step_over() {
+        //
+        auto func = get_function_from_pc(get_offset_pc());
+        auto func_entry = at_low_pc(func);
+        auto func_end = at_high_pc(func);
+
+        //
+        auto line = get_line_entry_from_pc(func_entry);
+        auto start_line = get_line_entry_from_pc(get_offset_pc());
+
+        std::vector<std::uintptr_t> to_delete{};
+
+        while (line->address < func_end) {
+            auto load_address = offset_dwarf_address(line->address);
+            if (line->address != start_line->address && !m_breakpoints.count(load_address)) {
+                set_breakpoint_at_address(load_address);
+                to_delete.push_back(load_address);
+            }
+            ++line;
+        }
+
+        //
+        auto frame_pointer = get_register_value(m_pid, reg::rbp);
+        auto return_address = read_memory(frame_pointer + 8);
+        if (!m_breakpoints.count(return_address)) {
+            set_breakpoint_at_address(return_address);
+            to_delete.push_back(return_address);
+        }
+
+        //
+        continue_execution();
+        for (auto addr : to_delete) {
+            remove_breakpoint(addr);
+        }
+    }
+
+    void debugger::remove_breakpoint(std::uintptr_t addr) {
+        if (m_breakpoints.at(addr).is_enabled()) {
+            m_breakpoints.at(addr).disable();
+        }
+        m_breakpoints.erase(addr);
+    }
+
+    uint64_t debugger::get_offset_pc() {
+        return offset_load_address(get_pc());
+    }
+
+    uint64_t debugger::offset_dwarf_address(uint64_t addr) {
+        return addr + m_load_address;
+    }
+
 } // namespace minidbg
