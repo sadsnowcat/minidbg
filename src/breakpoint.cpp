@@ -24,4 +24,4 @@ namespace minidbg {
         m_enabled = false;
     }
 
-}// namespace minidbg
+} // namespace minidbg
