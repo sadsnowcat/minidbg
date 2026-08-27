@@ -17,6 +17,7 @@ endif()
        src/registers.cpp
        src/utils.cpp
        src/vmmap.cpp
+       src/symbol.cpp
    )
 
 target_include_directories(mydbg PRIVATE
