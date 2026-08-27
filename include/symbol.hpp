@@ -2,14 +2,14 @@
 #define MINIDBG_SYMBOL_HPP
 
 #include <cstdint>
-#include <string>
 #include <elf/elf++.hh>
+#include <string>
 
 namespace minidbg {
 
-    enum class symbol_type{notype,object,func,section,file};
+    enum class symbol_type { notype, object, func, section, file };
 
-    struct symbol{
+    struct symbol {
         symbol_type type;
         std::string name;
         std::uintptr_t addr;
