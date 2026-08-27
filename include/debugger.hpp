@@ -40,7 +40,7 @@ namespace minidbg {
         void run();
         void handle_command(const std::string &line);
         void continue_execution();
-        void set_breakpoint_at_address(std::uintptr_t addr);
+        void set_breakpoint_at_address(std::uintptr_t addr, bool silent = false);
 
         void step_over_breakpoint();
 

@@ -82,8 +82,12 @@ namespace minidbg {
             step_in();
         } else if (is_prefix(command, "stepi")) {
             single_step_instruction_with_breakpoint_check();
-            auto line_entry = get_line_entry_from_pc(get_offset_pc());
-            // print_source(line_entry->file->path, line_entry->line);
+            try {
+                auto line_entry = get_line_entry_from_pc(get_offset_pc());
+                print_source(line_entry->file->path, line_entry->line);
+            } catch (const std::exception &) {
+                // no debug info at this address; nothing to print
+            }
         } else if (is_prefix(command, "next")) {
             step_over();
         } else if (is_prefix(command, "finish")) {
@@ -99,8 +103,10 @@ namespace minidbg {
         wait_for_signal();
     }
 
-    void debugger::set_breakpoint_at_address(std::uintptr_t addr) {
-        std::cout << "Set breakpoint at address 0x" << std::hex << addr << std::endl;
+    void debugger::set_breakpoint_at_address(std::uintptr_t addr, bool silent) {
+        if (!silent) {
+            std::cout << "Set breakpoint at address 0x" << std::hex << addr << std::endl;
+        }
         breakpoint bp{m_pid, addr};
         bp.enable();
         m_breakpoints[addr] = bp;
@@ -271,14 +277,16 @@ namespace minidbg {
                 }
             } catch (const std::exception &e) {
                 std::cout << "  (Cannot display source code: " << e.what()
-                          << " - The debug info version may be too high; source view degraded.)\n";
+                          << " - The source view unavailable at this address. Normal when the PC is in code without debug info, e.g. libc.)\n";
             }
             return;
         }
         case TRAP_TRACE:
             return;
         default:
-            std::cout << "Unknown SIGTRAP code " << info.si_code << std::endl;
+            if (info.si_code != 0) {
+                std::cout << "Unknown SIGTRAP code " << info.si_code << std::endl;
+            }
             return;
         }
     }
@@ -302,7 +310,7 @@ namespace minidbg {
 
         bool should_remove_breakpoint = false;
         if (!m_breakpoints.count(return_address)) {
-            set_breakpoint_at_address(return_address);
+            set_breakpoint_at_address(return_address, true);
             should_remove_breakpoint = true;
         }
 
@@ -314,6 +322,7 @@ namespace minidbg {
     }
 
     void debugger::step_in() {
+        try {
         auto line = get_line_entry_from_pc(get_offset_pc())->line;
 
         while (get_line_entry_from_pc(get_offset_pc())->line == line) {
@@ -322,9 +331,14 @@ namespace minidbg {
 
         auto line_entry = get_line_entry_from_pc(get_offset_pc());
         print_source(line_entry->file->path, line_entry->line);
+        } catch (const std::exception &e) {
+            std::cout << "  (Cannot step in: " << e.what()
+                      << ". The PC may be in code without debug info; use 'c' to continue to a breakpoint.)";
+        }
     }
 
     void debugger::step_over() {
+        try {
         //
         auto func = get_function_from_pc(get_offset_pc());
         auto func_entry = at_low_pc(func);
@@ -339,7 +353,7 @@ namespace minidbg {
         while (line->address < func_end) {
             auto load_address = offset_dwarf_address(line->address);
             if (line->address != start_line->address && !m_breakpoints.count(load_address)) {
-                set_breakpoint_at_address(load_address);
+                set_breakpoint_at_address(load_address, true);
                 to_delete.push_back(load_address);
             }
             ++line;
@@ -349,7 +363,7 @@ namespace minidbg {
         auto frame_pointer = get_register_value(m_pid, reg::rbp);
         auto return_address = read_memory(frame_pointer + 8);
         if (!m_breakpoints.count(return_address)) {
-            set_breakpoint_at_address(return_address);
+            set_breakpoint_at_address(return_address, true);
             to_delete.push_back(return_address);
         }
 
@@ -357,6 +371,10 @@ namespace minidbg {
         continue_execution();
         for (auto addr : to_delete) {
             remove_breakpoint(addr);
+        }
+        } catch (const std::exception &e) {
+            std::cout << "  (Cannot step over: " << e.what()
+                      << ". The PC may be in code without debug info (e.g. the dynamic loader at startup); use 'c' to continue to a breakpoint.)";
         }
     }
 
