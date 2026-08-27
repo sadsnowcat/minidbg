@@ -20,9 +20,10 @@ namespace minidbg {
             return false;
         return std::equal(s.begin(), s.end(), of.begin());
     }
-    
-    bool is_suffix(const std::string& s, const std::string& of) {
-        if (s.size() > of.size()) return false;
+
+    bool is_suffix(const std::string &s, const std::string &of) {
+        if (s.size() > of.size())
+            return false;
         auto diff = of.size() - s.size();
         return std::equal(s.begin(), s.end(), of.begin() + diff);
     }
