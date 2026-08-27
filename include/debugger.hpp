@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <iostream>
 #include <sys/types.h>
+#include <vector>
 
 #include <cstdint>
 #include <string>
@@ -42,9 +43,9 @@ namespace minidbg {
         void handle_command(const std::string &line);
         void continue_execution();
         void set_breakpoint_at_address(std::uintptr_t addr, bool silent = false);
- 
-        void set_breakpoint_at_function(const std::string& name);
-        void set_breakpoint_at_source_line(const std::string& file,unsigned line);
+
+        void set_breakpoint_at_function(const std::string &name);
+        void set_breakpoint_at_source_line(const std::string &file, unsigned line);
 
         void step_over_breakpoint();
 
@@ -89,7 +90,7 @@ namespace minidbg {
 
         uint64_t offset_dwarf_address(uint64_t addr);
 
-        std::vector<symbol> lookup_symbol(const std::string& name);
+        std::vector<symbol> lookup_symbol(const std::string &name);
 
     private:
         std::string m_prog_name;

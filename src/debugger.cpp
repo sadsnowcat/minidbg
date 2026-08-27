@@ -36,12 +36,12 @@ namespace minidbg {
         } else if (is_prefix(command, "break")) {
             if (args.size() < 2) {
                 std::cerr << "usage: break <address> | <file>:<line> | <function>\n";
-            } else if (args[1].rfind("0x", 0) == 0) {              // 0x 开头 → 地址断点
+            } else if (args[1].rfind("0x", 0) == 0) { // 0x 开头 → 地址断点
                 set_breakpoint_at_address(std::stol(args[1], nullptr, 0));
-            } else if (args[1].find(':') != std::string::npos) {   // 有冒号 → 行号断点
+            } else if (args[1].find(':') != std::string::npos) { // 有冒号 → 行号断点
                 auto file_and_line = split(args[1], ':');
                 set_breakpoint_at_source_line(file_and_line[0], std::stoi(file_and_line[1]));
-            } else {                                                // 其余 → 函数名断点
+            } else { // 其余 → 函数名断点
                 set_breakpoint_at_function(args[1]);
             }
         } else if (is_prefix(command, "register")) {
@@ -97,10 +97,15 @@ namespace minidbg {
             step_over();
         } else if (is_prefix(command, "finish")) {
             step_out();
-        }else if(is_prefix(command, "symbol")) {
-            auto syms = lookup_symbol(args[1]);
-            for (auto&& s : syms) {
-                std::cout << s.name << ' ' << to_string(s.type) << " 0x" << std::hex << s.addr << std::endl;
+        } else if (is_prefix(command, "symbol")) {
+            if (args.size() < 2) {
+                std::cerr << "usage: symbol <name>\n";
+            } else {
+                auto syms = lookup_symbol(args[1]);
+                for (auto &&s : syms) {
+                    std::cout << s.name << ' ' << to_string(s.type) << " 0x" << std::hex << s.addr
+                              << std::endl;
+                }
             }
         } else {
             std::cerr << "Unknown command\n";
@@ -122,10 +127,10 @@ namespace minidbg {
         m_breakpoints[addr] = bp;
     }
 
-    void debugger::set_breakpoint_at_function(const std::string& name){
-        for (const auto& cu : m_dwarf.compilation_units()){
-            for (const auto& die : cu.root()){
-                if(die.has(dwarf::DW_AT::name)&&at_name(die) == name){
+    void debugger::set_breakpoint_at_function(const std::string &name) {
+        for (const auto &cu : m_dwarf.compilation_units()) {
+            for (const auto &die : cu.root()) {
+                if (die.has(dwarf::DW_AT::name) && at_name(die) == name) {
                     auto low_pc = at_low_pc(die);
                     auto entry = get_line_entry_from_pc(low_pc);
                     ++entry;
@@ -135,20 +140,19 @@ namespace minidbg {
         }
     }
 
-    void debugger::set_breakpoint_at_source_line(const std::string& file,unsigned line){
-        for (const auto&cu:m_dwarf.compilation_units()){
+    void debugger::set_breakpoint_at_source_line(const std::string &file, unsigned line) {
+        for (const auto &cu : m_dwarf.compilation_units()) {
             if (is_suffix(file, at_name(cu.root()))) {
-                const auto& lt = cu.get_line_table();
+                const auto &lt = cu.get_line_table();
 
-                for(const auto& entry:lt){
-                    if(entry.is_stmt && entry.line == line){
+                for (const auto &entry : lt) {
+                    if (entry.is_stmt && entry.line == line) {
                         set_breakpoint_at_address(offset_dwarf_address(entry.address));
                     }
                 }
             }
         }
     }
-
 
     void debugger::dump_registers() {
         for (const auto &rd : g_register_descriptors) {
@@ -315,7 +319,8 @@ namespace minidbg {
                 }
             } catch (const std::exception &e) {
                 std::cout << "  (Cannot display source code: " << e.what()
-                          << " - The source view unavailable at this address. Normal when the PC is in code without debug info, e.g. libc.)\n";
+                          << " - The source view unavailable at this address. Normal when the PC "
+                             "is in code without debug info, e.g. libc.)\n";
             }
             return;
         }
@@ -361,58 +366,60 @@ namespace minidbg {
 
     void debugger::step_in() {
         try {
-        auto line = get_line_entry_from_pc(get_offset_pc())->line;
+            auto line = get_line_entry_from_pc(get_offset_pc())->line;
 
-        while (get_line_entry_from_pc(get_offset_pc())->line == line) {
-            single_step_instruction_with_breakpoint_check();
-        }
+            while (get_line_entry_from_pc(get_offset_pc())->line == line) {
+                single_step_instruction_with_breakpoint_check();
+            }
 
-        auto line_entry = get_line_entry_from_pc(get_offset_pc());
-        print_source(line_entry->file->path, line_entry->line);
+            auto line_entry = get_line_entry_from_pc(get_offset_pc());
+            print_source(line_entry->file->path, line_entry->line);
         } catch (const std::exception &e) {
             std::cout << "  (Cannot step in: " << e.what()
-                      << ". The PC may be in code without debug info; use 'c' to continue to a breakpoint.)";
+                      << ". The PC may be in code without debug info; use 'c' to continue to a "
+                         "breakpoint.)";
         }
     }
 
     void debugger::step_over() {
         try {
-        //
-        auto func = get_function_from_pc(get_offset_pc());
-        auto func_entry = at_low_pc(func);
-        auto func_end = at_high_pc(func);
+            //
+            auto func = get_function_from_pc(get_offset_pc());
+            auto func_entry = at_low_pc(func);
+            auto func_end = at_high_pc(func);
 
-        //
-        auto line = get_line_entry_from_pc(func_entry);
-        auto start_line = get_line_entry_from_pc(get_offset_pc());
+            //
+            auto line = get_line_entry_from_pc(func_entry);
+            auto start_line = get_line_entry_from_pc(get_offset_pc());
 
-        std::vector<std::uintptr_t> to_delete{};
+            std::vector<std::uintptr_t> to_delete{};
 
-        while (line->address < func_end) {
-            auto load_address = offset_dwarf_address(line->address);
-            if (line->address != start_line->address && !m_breakpoints.count(load_address)) {
-                set_breakpoint_at_address(load_address, true);
-                to_delete.push_back(load_address);
+            while (line->address < func_end) {
+                auto load_address = offset_dwarf_address(line->address);
+                if (line->address != start_line->address && !m_breakpoints.count(load_address)) {
+                    set_breakpoint_at_address(load_address, true);
+                    to_delete.push_back(load_address);
+                }
+                ++line;
             }
-            ++line;
-        }
 
-        //
-        auto frame_pointer = get_register_value(m_pid, reg::rbp);
-        auto return_address = read_memory(frame_pointer + 8);
-        if (!m_breakpoints.count(return_address)) {
-            set_breakpoint_at_address(return_address, true);
-            to_delete.push_back(return_address);
-        }
+            //
+            auto frame_pointer = get_register_value(m_pid, reg::rbp);
+            auto return_address = read_memory(frame_pointer + 8);
+            if (!m_breakpoints.count(return_address)) {
+                set_breakpoint_at_address(return_address, true);
+                to_delete.push_back(return_address);
+            }
 
-        //
-        continue_execution();
-        for (auto addr : to_delete) {
-            remove_breakpoint(addr);
-        }
+            //
+            continue_execution();
+            for (auto addr : to_delete) {
+                remove_breakpoint(addr);
+            }
         } catch (const std::exception &e) {
             std::cout << "  (Cannot step over: " << e.what()
-                      << ". The PC may be in code without debug info (e.g. the dynamic loader at startup); use 'c' to continue to a breakpoint.)";
+                      << ". The PC may be in code without debug info (e.g. the dynamic loader at "
+                         "startup); use 'c' to continue to a breakpoint.)";
         }
     }
 
@@ -431,21 +438,21 @@ namespace minidbg {
         return addr + m_load_address;
     }
 
-    std::vector<symbol> debugger::lookup_symbol(const std::string& name){
+    std::vector<symbol> debugger::lookup_symbol(const std::string &name) {
         std::vector<symbol> syms;
 
-        for(auto &sec : m_elf.sections()){
-            if(sec.get_hdr().type != elf::sht::symtab && sec.get_hdr().type != elf::sht::dynsym) continue;
+        for (auto &sec : m_elf.sections()) {
+            if (sec.get_hdr().type != elf::sht::symtab && sec.get_hdr().type != elf::sht::dynsym)
+                continue;
 
-            for (auto sym : sec.as_symtab()){
-                if (sym.get_name() == name){
+            for (auto sym : sec.as_symtab()) {
+                if (sym.get_name() == name) {
                     auto &d = sym.get_data();
-                    syms.push_back(symbol{to_symbol_type(d.type()),sym.get_name(),d.value});
+                    syms.push_back(symbol{to_symbol_type(d.type()), sym.get_name(), d.value});
                 }
             }
         }
         return syms;
     }
-
 
 } // namespace minidbg
