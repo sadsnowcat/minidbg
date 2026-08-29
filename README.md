@@ -18,7 +18,7 @@ minidbg 是一个面向 Linux x86-64 的轻量级命令行调试器，基于 Lin
   - `finish`—— 步出当前函数（step out）
 - 进程内存映射查看（`vmmap`，解析 `/proc/<pid>/maps`，并高亮当前 PC 所在区间）
 - 局部变量查看（`variables`，自解析 DWARF 位置表达式，支持 `DW_OP_fbreg` / 寄存器 / 全局变量）
-- 按名符号查找（`symbol`）与调用栈回溯（`backtrace`）
+- 按名符号查找（`symbol`）、调用栈回溯（`backtrace`）与栈检查（`stack`：pwndbg 风格 8 字节内存视图；`frames`：逐帧详情；`tele`：任意地址望远镜）
 - 交互式调试 shell（基于 linenoise，支持命令历史与行编辑）
 - 命令前缀缩写（如 `c` = `continue`、`b` = `break`、`n` = `next`）
 
@@ -107,7 +107,7 @@ Hello world
 | Command                       | Description                                          | Example                              |
 | ----------------------------- | ---------------------------------------------------- | ------------------------------------ |
 | `continue` (`c`)              | 继续执行，直到断点或程序结束                         | `c`                                  |
-| `break <addr>` (`b`)          | 在指定**地址**设置软件断点（仅支持地址，无符号断点） | `break 0x555555555149`               |
+| `break <addr \| func \| file:line>` (`b`) | 设置软件断点，支持**地址 / 函数名 / 源码行**三种形式 | `break main`                         |
 | `register dump`               | 打印全部寄存器                                       | `register dump`                      |
 | `register read <reg>`         | 读取指定寄存器                                       | `register read rip`                  |
 | `register write <reg> <val>`  | 修改指定寄存器                                       | `register write rip 0x555555555149`  |
@@ -121,11 +121,14 @@ Hello world
 | `symbol <name>`              | 按名字查找符号（函数 / 变量），显示类型与地址           | `symbol main`                        |
 | `backtrace` (`bt`)           | 打印调用栈回溯（函数地址 + 偏移 + 符号）                | `backtrace`                          |
 | `variables` (`v`)            | 打印当前函数作用域内局部变量的名字、地址与值（自解析 DWARF 位置） | `variables`                          |
+| `stack` (`sta`)              | pwndbg 风格栈视图：从 rsp 起每 8 字节一行，指针望远镜解引用（—▸），代码指针标注 (func+off) 与指令字节 | `stack`                              |
+| `tele <addr> [count]`        | 望远镜式查看任意地址起的内存（默认 16 行），指针自动解引用 | `tele 0x7fffffffe000 8`               |
+| `frames`                     | 逐帧打印调用栈详情：函数、pc、rbp、CFA、返回地址、帧大小、局部变量（rbp 链） | `frames`                             |
 
 
 ### 命令缩写
 
-命令支持前缀缩写，例如 `c` = `continue`、`n` = `next`、`s` = `step`、`b` = `break`、`bt` = `backtrace`、`v` / `vars` = `variables`。注意 `step` 是 `stepi` 的前缀，输入 `stepi` 会被正确路由到指令级单步；`b` 同时是 `break` 与 `backtrace` 的前缀，但因 `break` 分支在前，`b` 固定路由到 `break`，要缩写为 `backtrace` 请用 `bt`。
+命令支持前缀缩写，例如 `c` = `continue`、`n` = `next`、`s` = `step`、`b` = `break`、`bt` = `backtrace`、`v` / `vars` = `variables`。注意 `step` 是 `stepi` 的前缀，输入 `stepi` 会被正确路由到指令级单步；`b` 同时是 `break` 与 `backtrace` 的前缀，但因 `break` 分支在前，`b` 固定路由到 `break`，要缩写为 `backtrace` 请用 `bt`；`stack` 因 `s` 会被 `step` 分支优先捕获，最短无歧义缩写是 `sta`。
 
 ### 数值格式
 
@@ -153,7 +156,8 @@ minidbg/
 │   ├── vmmap.cpp         # 解析 /proc/<pid>/maps
 │   ├── symbol.cpp        # 按名符号查找
 │   ├── dwarf_util.cpp    # DWARF 表达式原语（ULEB128/SLEB128 解码）
-│   └── variables.cpp     # variables 命令：自解析 DWARF 局部变量
+│   ├── variables.cpp     # variables 命令：自解析 DWARF 局部变量
+│   └── stack.cpp         # stack/tele（pwndbg 风格内存转储）与 frames（rbp 链逐帧详情）
 ├── include/
 │   ├── debugger.hpp      # 调试器类定义
 │   ├── breakpoint.hpp    # 断点类
@@ -162,7 +166,8 @@ minidbg/
 │   ├── vmmap.hpp         # vmmap 声明
 │   ├── symbol.hpp        # 符号查找声明
 │   ├── dwarf_util.hpp    # LEB128 解码声明
-│   └── variables.hpp     # print_variables 声明
+│   ├── variables.hpp     # print_variables 与变量收集接口声明
+│   └── stack.hpp         # print_stack / print_telescope / print_frames 声明
 ├── examples/
 │   ├── hello.cpp         # 示例目标程序
 │   └── stacktest.cpp     # 变量 / 回溯测试目标程序（带 -gdwarf-4 -g -O0）
