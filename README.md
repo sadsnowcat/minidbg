@@ -4,6 +4,8 @@
 
 minidbg 是一个面向 Linux x86-64 的轻量级命令行调试器，基于 Linux `ptrace` 控制目标进程，支持寄存器 / 内存读写、软件断点、源码级与指令级单步、以及进程内存映射查看等基本调试能力。项目参考 [Writing a Linux Debugger](https://blog.tartanllama.xyz/)
 
+[项目地址](https://github.com/sadsnowcat/minidbg)
+
 ## 功能
 
 - 启动并控制目标进程（在 `main()` 中通过 `fork` + `execl` 直接拉起被调试程序，因此没有独立的 `run` 命令）
