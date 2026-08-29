@@ -17,6 +17,8 @@ minidbg 是一个面向 Linux x86-64 的轻量级命令行调试器，基于 Lin
   - `next`  —— 步过当前函数调用（step over）
   - `finish`—— 步出当前函数（step out）
 - 进程内存映射查看（`vmmap`，解析 `/proc/<pid>/maps`，并高亮当前 PC 所在区间）
+- 局部变量查看（`variables`，自解析 DWARF 位置表达式，支持 `DW_OP_fbreg` / 寄存器 / 全局变量）
+- 按名符号查找（`symbol`）与调用栈回溯（`backtrace`）
 - 交互式调试 shell（基于 linenoise，支持命令历史与行编辑）
 - 命令前缀缩写（如 `c` = `continue`、`b` = `break`、`n` = `next`）
 
@@ -116,10 +118,14 @@ Hello world
 | `stepi`                       | 指令级单步                                           | `stepi`                              |
 | `next` (`n`)                  | 步过函数调用（step over）                            | `next`                               |
 | `finish` (`fin`)              | 步出当前函数（step out）                             | `finish`                             |
+| `symbol <name>`              | 按名字查找符号（函数 / 变量），显示类型与地址           | `symbol main`                        |
+| `backtrace` (`bt`)           | 打印调用栈回溯（函数地址 + 偏移 + 符号）                | `backtrace`                          |
+| `variables` (`v`)            | 打印当前函数作用域内局部变量的名字、地址与值（自解析 DWARF 位置） | `variables`                          |
+
 
 ### 命令缩写
 
-命令支持前缀缩写，例如 `c` = `continue`、`n` = `next`、`s` = `step`、`b` = `break`。注意 `step` 是 `stepi` 的前缀，输入 `stepi` 会被正确路由到指令级单步。
+命令支持前缀缩写，例如 `c` = `continue`、`n` = `next`、`s` = `step`、`b` = `break`、`bt` = `backtrace`、`v` / `vars` = `variables`。注意 `step` 是 `stepi` 的前缀，输入 `stepi` 会被正确路由到指令级单步；`b` 同时是 `break` 与 `backtrace` 的前缀，但因 `break` 分支在前，`b` 固定路由到 `break`，要缩写为 `backtrace` 请用 `bt`。
 
 ### 数值格式
 
@@ -127,7 +133,7 @@ Hello world
 
 ## 使用注意 / 已知限制
 
-1. **断点只支持地址**。`break` 目前只接受地址（如 `break 0x...`），尚不支持函数名 / 行号断点。建议先 `vmmap` 查看基址，结合 `readelf -s build/hello` 或 DWARF 信息定位地址。
+1. **断点支持地址 / 源码行 / 函数名**。`break` 支持三种形式：`break <address>`（地址）、`break <file>:<line>`（源码行）、`break <function>`（函数名）。函数名断点会匹配 DWARF 中同名的 `subprogram` 并下在入口地址；源码行断点按 DWARF 行号信息定位。调试 PIE 前建议用 `setarch -R` 关闭 ASLR 以固定地址。
 2. **PIE 与 ASLR**。`hello` 是位置无关可执行文件，每次加载地址不同。调试时可用 `setarch -R ./build/mydbg ./build/hello` 关闭地址随机化，方便固定断点地址。
 3. **DWARF 版本**。被调试程序需以 `-gdwarf-4` 编译（CMakeLists 已为 `hello` 配置），否则高版本 DWARF（gcc ≥ 11 默认 DWARF 5）会因旧版 libelfin 不识别新属性而解析失败。
 4. **先 `c` 再单步**。程序启动后第一次停在动态加载器（`ld-linux`）中，此时 PC 不在你的代码里，`step` / `next` / `finish` 无法工作（会提示 “Cannot find function”）。请先 `c` 跑到你的断点，再进行单步。
@@ -144,15 +150,22 @@ minidbg/
 │   ├── breakpoint.cpp    # 软件断点 (INT3)
 │   ├── registers.cpp     # 寄存器描述与访问
 │   ├── utils.cpp         # 字符串分割等工具
-│   └── vmmap.cpp         # 解析 /proc/<pid>/maps
+│   ├── vmmap.cpp         # 解析 /proc/<pid>/maps
+│   ├── symbol.cpp        # 按名符号查找
+│   ├── dwarf_util.cpp    # DWARF 表达式原语（ULEB128/SLEB128 解码）
+│   └── variables.cpp     # variables 命令：自解析 DWARF 局部变量
 ├── include/
 │   ├── debugger.hpp      # 调试器类定义
 │   ├── breakpoint.hpp    # 断点类
 │   ├── registers.hpp     # 寄存器描述
 │   ├── utils.hpp         # 工具函数声明
-│   └── vmmap.hpp         # vmmap 声明
+│   ├── vmmap.hpp         # vmmap 声明
+│   ├── symbol.hpp        # 符号查找声明
+│   ├── dwarf_util.hpp    # LEB128 解码声明
+│   └── variables.hpp     # print_variables 声明
 ├── examples/
-│   └── hello.c           # 示例目标程序
+│   ├── hello.cpp         # 示例目标程序
+│   └── stacktest.cpp     # 变量 / 回溯测试目标程序（带 -gdwarf-4 -g -O0）
 └── ext/
     ├── linenoise/        # 命令行编辑与交互
     └── libelfin/         # ELF / DWARF 支持（构建时 make）

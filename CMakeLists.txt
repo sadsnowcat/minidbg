@@ -18,6 +18,8 @@ endif()
        src/utils.cpp
        src/vmmap.cpp
        src/symbol.cpp
+       src/dwarf_util.cpp
+       src/variables.cpp
    )
 
 target_include_directories(mydbg PRIVATE
