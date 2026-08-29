@@ -20,6 +20,7 @@ endif()
        src/symbol.cpp
        src/dwarf_util.cpp
        src/variables.cpp
+       src/stack.cpp
    )
 
 target_include_directories(mydbg PRIVATE
