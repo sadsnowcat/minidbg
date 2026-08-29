@@ -10,6 +10,7 @@
 #include <exception>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace minidbg {
     namespace {
@@ -151,5 +152,40 @@ namespace minidbg {
         walk_variables(dbg, func, frame_base, count);
         if (count == 0)
             std::cout << "(no local variables at this scope)\n";
+    }
+
+    namespace {
+        void collect_walk(const dwarf::die &d, uint64_t frame_base,
+                          std::vector<variable_info> &out) {
+            for (const auto &child : d) {
+                if (child.tag == dwarf::DW_TAG::variable || child.tag == dwarf::DW_TAG::formal_parameter) {
+                    if (child.has(dwarf::DW_AT::name) && child.has(dwarf::DW_AT::location)) {
+                        auto loc = child[dwarf::DW_AT::location];
+                        if (loc.get_type() == dwarf::value::type::exprloc ||loc.get_type() == dwarf::value::type::block) {
+                            size_t sz = 0;
+                            const auto *b = reinterpret_cast<const uint8_t *>(loc.as_block(&sz));
+                            if (sz > 1 && b[0] == static_cast<uint8_t>(dwarf::DW_OP::fbreg)) {
+                                int64_t off = 0;
+                                read_sleb128(b + 1, &off);
+                                variable_info v;
+                                v.name = dwarf::at_name(child);
+                                v.cfa_offset = off;
+                                v.address = frame_base + (uint64_t)off;
+                                out.push_back(v);
+                            }
+                        }
+                    }
+                } else if (child.tag == dwarf::DW_TAG::lexical_block) {
+                    collect_walk(child, frame_base, out);
+                }
+            }
+        }
+    } // namespace
+
+    std::vector<variable_info> collect_local_variables(const dwarf::die &func,
+                                                        uint64_t frame_base) {
+        std::vector<variable_info> out;
+        collect_walk(func, frame_base, out);
+        return out;
     }
 } // namespace minidbg
