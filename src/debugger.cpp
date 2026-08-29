@@ -11,6 +11,7 @@
 #include <sys/wait.h>
 
 #include "registers.hpp"
+#include "stack.hpp"
 #include "utils.hpp"
 #include "variables.hpp"
 #include "vmmap.hpp"
@@ -112,6 +113,17 @@ namespace minidbg {
             print_backtrace();
         } else if (is_prefix(command, "variables")) {
             print_variables(*this);
+        } else if (is_prefix(command, "stack")) {
+            print_stack(*this);
+        } else if (is_prefix(command, "tele")) {
+            if (args.size() < 2) {
+                std::cerr << "usage: tele <address> [count]" << std::endl;
+            } else {
+                int count = (args.size() > 2) ? std::stoi(args[2]) : 16;
+                print_telescope(*this, std::stol(args[1], nullptr, 0), count);
+            }
+        } else if (is_prefix(command, "frames")) {
+            print_frames(*this);
         } else {
             std::cerr << "Unknown command\n";
         }
@@ -183,8 +195,7 @@ namespace minidbg {
     }
 
     void debugger::step_over_breakpoint() {
-        // After a breakpoint hit, handle_sigtrap has already rewound the PC to the
-        // breakpoint address, so look it up directly (no -1 adjustment).
+
         auto possible_breakpoint_location = get_pc();
 
         if (m_breakpoints.count(possible_breakpoint_location)) {
