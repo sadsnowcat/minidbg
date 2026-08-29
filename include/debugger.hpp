@@ -94,6 +94,9 @@ namespace minidbg {
 
         std::vector<symbol> lookup_symbol(const std::string &name);
 
+        pid_t get_pid() const { return m_pid; }
+        bool dwarf_ok() const { return m_dwarf_ok; }
+
     private:
         std::string m_prog_name;
         pid_t m_pid;

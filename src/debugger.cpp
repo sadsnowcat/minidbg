@@ -12,6 +12,7 @@
 
 #include "registers.hpp"
 #include "utils.hpp"
+#include "variables.hpp"
 #include "vmmap.hpp"
 
 namespace minidbg {
@@ -107,8 +108,10 @@ namespace minidbg {
                               << std::endl;
                 }
             }
-        }else if(is_prefix(command, "backtrace")){
+        } else if (is_prefix(command, "backtrace")) {
             print_backtrace();
+        } else if (is_prefix(command, "variables")) {
+            print_variables(*this);
         } else {
             std::cerr << "Unknown command\n";
         }
@@ -432,27 +435,31 @@ namespace minidbg {
         m_breakpoints.erase(addr);
     }
 
-    void debugger::print_backtrace(){
-     try {
-        auto output_frame = [frame_number =0](auto&& func) mutable{
-            std::cout<<"frame #"<<frame_number++ <<": 0x"<<dwarf::at_low_pc(func)<<' '<<dwarf::at_name(func)<<std::endl;
-        };
+    void debugger::print_backtrace() {
+        try {
+            auto output_frame = [frame_number = 0](auto &&func) mutable {
+                std::cout << "frame #" << frame_number++ << ": 0x" << dwarf::at_low_pc(func) << ' '
+                          << dwarf::at_name(func) << std::endl;
+            };
 
-        auto current_func = get_function_from_pc(offset_load_address(get_pc()));
-        output_frame(current_func);
-
-        auto frame_pointer = get_register_value(m_pid,reg::rbp);
-        auto return_address = read_memory(frame_pointer+8);
-
-        while (dwarf::at_name(current_func)!="main"){
-            current_func = get_function_from_pc(offset_load_address(return_address));
+            auto current_func = get_function_from_pc(offset_load_address(get_pc()));
             output_frame(current_func);
-            frame_pointer = read_memory(frame_pointer);
-            return_address = read_memory(frame_pointer+8);
+
+            auto frame_pointer = get_register_value(m_pid, reg::rbp);
+            auto return_address = read_memory(frame_pointer + 8);
+
+            while (dwarf::at_name(current_func) != "main") {
+                current_func = get_function_from_pc(offset_load_address(return_address));
+                output_frame(current_func);
+                frame_pointer = read_memory(frame_pointer);
+                return_address = read_memory(frame_pointer + 8);
+            }
+        } catch (const std::exception &e) {
+            std::cout
+                << "  (Cannot backtrace: " << e.what()
+                << ". The PC may be in code without debug info, or the process may have exited.)"
+                << std::endl;
         }
-     } catch (const std::exception &e) {
-        std::cout << "  (Cannot backtrace: " << e.what() << ". The PC may be in code without debug info, or the process may have exited.)" << std::endl;
-     }
     }
 
     uint64_t debugger::get_offset_pc() {
