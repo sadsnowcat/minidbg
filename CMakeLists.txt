@@ -25,9 +25,14 @@ target_include_directories(mydbg PRIVATE
 )
 
 add_executable(hello
-    examples/hello.c
+    examples/hello.cpp
 )
 target_compile_options(hello PRIVATE -g -O0 -gdwarf-4)
+
+add_executable(stacktest
+    examples/stacktest.cpp
+)
+target_compile_options(stacktest PRIVATE -g -O0 -gdwarf-4)
 
 
 add_library(linenoise STATIC ext/linenoise/linenoise.c)
