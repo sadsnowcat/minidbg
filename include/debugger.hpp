@@ -86,6 +86,8 @@ namespace minidbg {
 
         void remove_breakpoint(std::uintptr_t addr);
 
+        void print_backtrace();
+
         uint64_t get_offset_pc();
 
         uint64_t offset_dwarf_address(uint64_t addr);
