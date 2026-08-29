@@ -13,7 +13,8 @@ namespace minidbg {
             return "section";
         case symbol_type::file:
             return "file";
-        default: return "notype"; 
+        default:
+            return "notype";
         }
     }
 
