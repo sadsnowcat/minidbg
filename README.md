@@ -2,7 +2,7 @@
 
 **一个用 C++ 编写的 x86-64 Linux 调试器。**
 
-minidbg 是一个面向 Linux x86-64 的轻量级命令行调试器，基于 Linux `ptrace` 控制目标进程，支持寄存器 / 内存读写、软件断点、源码级与指令级单步、以及进程内存映射查看等基本调试能力。项目按 [Writing a Linux Debugger](https://blog.tartanllama.xyz/) 系列教程逐步实现。
+minidbg 是一个面向 Linux x86-64 的轻量级命令行调试器，基于 Linux `ptrace` 控制目标进程，支持寄存器 / 内存读写、软件断点、源码级与指令级单步、以及进程内存映射查看等基本调试能力。项目参考 [Writing a Linux Debugger](https://blog.tartanllama.xyz/)
 
 ## 功能
 
